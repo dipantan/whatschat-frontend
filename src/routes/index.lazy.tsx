@@ -8,12 +8,21 @@ import {
   query,
   orderBy,
 } from "firebase/firestore";
-import { getStorage, ref, getDownloadURL } from "firebase/storage";
+import {
+  getStorage,
+  ref,
+  getDownloadURL,
+  uploadBytesResumable,
+} from "firebase/storage";
 import { useCollection } from "react-firebase-hooks/firestore";
 import { MessageList, MessageType } from "react-chat-elements";
-import { useUploadFile } from "react-firebase-hooks/storage";
 import { Lightbox } from "react-modal-image";
 import EmojiPicker from "emoji-picker-react";
+
+import "react-responsive-modal/styles.css";
+import { Modal } from "react-responsive-modal";
+
+import "react-circular-progressbar/dist/styles.css";
 
 import { faker } from "@faker-js/faker";
 import { useEffect, useRef, useState } from "react";
@@ -26,7 +35,8 @@ import { generateChatCollectionRef } from "../utils";
 
 import "../styles/index.css";
 import { GrEmoji } from "react-icons/gr";
-import { IoIosArrowBack, IoMdArrowBack } from "react-icons/io";
+import { IoMdArrowBack } from "react-icons/io";
+import { Circle } from "rc-progress";
 
 export const Route = createLazyFileRoute("/")({
   component: Index,
@@ -47,10 +57,14 @@ function Index() {
   const [collectionRef, setCollectionRef] = useState<string>("");
   const messageListRef = useRef(null);
   const [openLightBox, setOpenLightBox] = useState(false);
-  const [urlToHugeImageFile, setUrlToHugeImageFile] = useState<string>("");
   const [urlToLargeImageFile, setUrlToLargeImageFile] = useState<string>("");
 
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+
   const [openEmojiPicker, setOpenEmojiPicker] = useState(false);
+
+  const divRefDesktop = useRef<HTMLDivElement>(null);
+  const divRefMobile = useRef<HTMLDivElement>(null);
 
   const photoTypes = [
     "image/jpeg",
@@ -101,13 +115,11 @@ function Index() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const [value] = useCollection(collection(getFirestore(app), "users"), {
     snapshotListenOptions: { includeMetadataChanges: true },
   });
-
-  const [uploadFile] = useUploadFile();
 
   const [currentText, setCurrentText] = useState<string>("");
 
@@ -127,7 +139,7 @@ function Index() {
     }
   };
 
-  const handleFileChange = async (event: { target: { files: File[] } }) => {
+  const handleFileChange = async (event) => {
     const file: File = event.target.files[0];
     if (file) {
       const storageRef = ref(
@@ -136,27 +148,34 @@ function Index() {
       );
       const type = getTypes(file);
 
-      const result = await uploadFile(storageRef, file, {
+      const result = uploadBytesResumable(storageRef, file, {
         contentType: file.type,
       });
 
+      result.on(
+        "state_changed",
+        (snapshot) => {
+          const progress =
+            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(progress);
+          console.log("Upload is " + progress + "% done");
+        },
+        (error) => {
+          console.log(error);
+        },
+        () => {
+          setUploadProgress(null);
+          console.log("success");
+        }
+      );
+
       if (result) {
-        const uploadRef = result.ref;
+        const uploadRef = (await result).ref;
         const url = await getDownloadURL(uploadRef); // URL of the uploaded file
         await sendMessage("", url, type);
       }
     }
   };
-
-  useEffect(() => {
-    if (user && activeContact) {
-      const collectionRef = generateChatCollectionRef(
-        activeContact.id,
-        user?.uid
-      );
-      setCollectionRef(collectionRef);
-    }
-  }, [user, activeContact]);
 
   useEffect(() => {
     onAuthStateChanged(getAuth(app), (currentUser) => {
@@ -177,18 +196,34 @@ function Index() {
             object.position =
               doc.data().sender === user?.uid ? "right" : "left";
             object.date = doc.data().date?.toDate();
+            object.copiableDate = true;
+            object.removeButton = true;
             return object;
           })
         );
       });
     }
-  }, [collectionRef, user?.uid]);
+    if (user && activeContact) {
+      setDataSource([]);
+      const collectionRef = generateChatCollectionRef(
+        activeContact.id,
+        user?.uid
+      );
+      setCollectionRef(collectionRef);
+      divRefDesktop.current.scrollTop = divRefDesktop.current?.scrollHeight;
+      divRefMobile.current.scrollTop = divRefMobile.current?.scrollHeight;
+    }
+  }, [collectionRef, user, activeContact]);
 
   const sendMessage = async (
     text: string,
     url?: string,
     type?: "photo" | "audio" | "video" | "file"
   ) => {
+    if (!type && currentText === "") {
+      return;
+    }
+
     if (activeContact && user) {
       await createCollection(`messages/${collectionRef}/chats`, {
         type: type ? type : "text",
@@ -226,7 +261,35 @@ function Index() {
                   : null,
       });
       setCurrentText("");
+      divRefDesktop.current.scrollTop = divRefDesktop.current?.scrollHeight;
+      divRefMobile.current.scrollTop = divRefMobile.current?.scrollHeight;
     }
+  };
+
+  const ContactList = ({ contact }) => {
+    return (
+      <div
+        className={`p-2 bg rounded shadow-sm flex items-center gap-2 cursor-pointer ${
+          activeContact?.id === contact.id ? "bg-[#62ecc0]" : ""
+        }`}
+        onClick={() =>
+          setActiveContact({
+            id: contact.id,
+            name: contact.data().name,
+            bio: contact.data().bio,
+          })
+        }
+        key={contact.id}
+      >
+        <img
+          src={contact.data().profilePic || avatar}
+          className="w-10 h-10 rounded-full"
+          alt="profile"
+          onError={(e) => (e.currentTarget.src = avatar)}
+        />
+        <h1>{contact.data().name}</h1>
+      </div>
+    );
   };
 
   return (
@@ -234,7 +297,6 @@ function Index() {
       {user ? (
         <div className="p-2 flex overflow-hidden h-full">
           {/* for desktop */}
-
           {/* contact list */}
           <div className="w-96 h-[90vh] overflow-scroll hidden lg:block md:block">
             {value &&
@@ -242,29 +304,7 @@ function Index() {
                 if (contact.id == user.uid) {
                   return null;
                 } else {
-                  return (
-                    <div
-                      className={`p-2 bg rounded shadow-sm flex items-center gap-2 cursor-pointer ${
-                        activeContact?.id === contact.id ? "bg-[#62ecc0]" : ""
-                      }`}
-                      onClick={() =>
-                        setActiveContact({
-                          id: contact.id,
-                          name: contact.data().name,
-                          bio: contact.data().bio,
-                        })
-                      }
-                      key={contact.id}
-                    >
-                      <img
-                        src={contact.data().profilePic || avatar}
-                        className="w-10 h-10 rounded-full"
-                        alt="profile"
-                        onError={(e) => (e.currentTarget.src = avatar)}
-                      />
-                      <h1>{contact.data().name}</h1>
-                    </div>
-                  );
+                  return <ContactList contact={contact} key={contact.id} />;
                 }
               })}
           </div>
@@ -274,7 +314,17 @@ function Index() {
             {activeContact ? (
               <div className="flex flex-col h-[90vh]">
                 {/* header */}
-                <div className="w-full bg-[#62ecc01f] shadow-inner p-2">
+                <div className="w-full bg-[#62ecc01f] shadow-inner p-2 ps-0 pe-0 flex items-center">
+                  {/* back button */}
+                  <div className="p-2 flex items-center">
+                    <button
+                      className="text-3xl"
+                      onClick={() => setActiveContact(null)}
+                    >
+                      <IoMdArrowBack />
+                    </button>
+                  </div>
+
                   <div className="flex gap-2 items-center cursor-pointer w-fit">
                     <img
                       src={activeContact.profilePic || avatar}
@@ -287,7 +337,7 @@ function Index() {
                 </div>
 
                 {/* chat */}
-                <div className="bg-white pt-2 h-[88vh] overflow-scroll">
+                <div className="h-[88vh] overflow-scroll" ref={divRefDesktop}>
                   <MessageList
                     className="message-list"
                     lockable={false}
@@ -296,22 +346,48 @@ function Index() {
                       color: "#000",
                       fontSize: "24px",
                     }}
+                    onMessageFocused={(e) => console.log(e)}
                     onClick={(e) => {
                       if (e.type === "file") {
                         window.open(e.data.uri, "_blank");
                       }
                     }}
                     onOpen={(e) => {
-                      console.log(e);
-
-                      setUrlToHugeImageFile(e.data.uri);
-                      setUrlToLargeImageFile(e.data.uri);
+                      setUrlToLargeImageFile(e.data.uri || "");
                       setOpenLightBox(true);
                     }}
+                    toBottomHeight={"100%"}
                     onRemoveMessageClick={(e) => console.log(e)}
                     onForwardClick={(e) => console.log(e)}
                     referance={messageListRef}
+                    sendMessagePreview={true}
                   />
+
+                  <Modal
+                    open={uploadProgress !== null}
+                    // open={true}
+                    center
+                    classNames={{}}
+                    showCloseIcon={false}
+                    onClose={() => setUploadProgress(null)}
+                  >
+                    <div className="p-5 px-10 text-center rounded-lg w-60">
+                      <Circle
+                        percent={parseInt(uploadProgress?.toFixed())}
+                        // percent={80}
+                        strokeWidth={4}
+                        strokeColor="#62ecc0"
+                        trailColor="white"
+                        strokeLinecap="square"
+                        steps={100}
+                        trailWidth={4}
+                        transition="ease"
+                      />
+                      <p className="pt-4">
+                        Uploading {uploadProgress?.toFixed()}%
+                      </p>
+                    </div>
+                  </Modal>
                 </div>
 
                 <div className="p-2 flex justify-between w-full bg-slate-100">
@@ -354,7 +430,7 @@ function Index() {
                         type="file"
                         ref={fileInputRef}
                         style={{ display: "none" }}
-                        onChange={handleFileChange}
+                        onChange={(e) => handleFileChange(e)}
                       />
                     </div>
 
@@ -362,10 +438,12 @@ function Index() {
                       className="rce-input rce-input-textarea"
                       placeholder="Type here..."
                       style={{ height: "41px" }}
-                      value={currentText}
                       ref={inputRef}
+                      // autoFocus={true}
+                      value={currentText}
                       onChange={(e) => setCurrentText(e.target.value)}
-                    ></textarea>
+                      // defaultValue={currentText}
+                    />
 
                     {/* right buttons */}
                     <div className="rce-input-buttons flex items-center">
@@ -381,10 +459,12 @@ function Index() {
                           color: "white",
                           borderColor: "rgb(57, 121, 170)",
                         }}
-                        onClick={() => sendMessage(currentText)}
+                        onClick={() => {
+                          sendMessage(currentText);
+                        }}
                       >
                         <span className="rce-button-icon--container">
-                          <span>Send</span>
+                          {/* <span>Send</span> */}
                           <span
                             className="rce-button-icon"
                             style={{ fontSize: "20px" }}
@@ -421,27 +501,7 @@ function Index() {
                 if (contact.id == user.uid) {
                   return null;
                 } else {
-                  return (
-                    <div
-                      className={`p-2 bg rounded shadow-sm flex items-center gap-2 cursor-pointer`}
-                      onClick={() =>
-                        setActiveContact({
-                          id: contact.id,
-                          name: contact.data().name,
-                          bio: contact.data().bio,
-                        })
-                      }
-                      key={contact.id}
-                    >
-                      <img
-                        src={contact.data().profilePic || avatar}
-                        className="w-10 h-10 rounded-full"
-                        alt="profile"
-                        onError={(e) => (e.currentTarget.src = avatar)}
-                      />
-                      <h1>{contact.data().name}</h1>
-                    </div>
-                  );
+                  return <ContactList contact={contact} key={contact.id} />;
                 }
               })
             ) : (
@@ -452,7 +512,10 @@ function Index() {
                   <div className="p-2 flex items-center">
                     <button
                       className="text-3xl"
-                      onClick={() => setActiveContact(null)}
+                      onClick={() => {
+                        setDataSource([]);
+                        setActiveContact(null);
+                      }}
                     >
                       <IoMdArrowBack />
                     </button>
@@ -470,30 +533,56 @@ function Index() {
                 </div>
 
                 {/* chat */}
-                <div className="bg-white pt-2 h-[88vh] overflow-scroll">
-                  <MessageList
-                    className="message-list"
-                    lockable={false}
-                    dataSource={dataSource}
-                    messageBoxStyles={{
-                      color: "#000",
-                      fontSize: "24px",
-                    }}
-                    onClick={(e) => {
-                      if (e.type === "file") {
-                        window.open(e.data.uri, "_blank");
-                      }
-                    }}
-                    onOpen={(e) => {
-                      console.log(e);
-                      setUrlToHugeImageFile(e.data.uri);
-                      setUrlToLargeImageFile(e.data.uri);
-                      setOpenLightBox(true);
-                    }}
-                    onRemoveMessageClick={(e) => console.log(e)}
-                    onForwardClick={(e) => console.log(e)}
-                    referance={messageListRef}
-                  />
+                <div
+                  className="bg-white pt-2 h-[88vh] overflow-scroll"
+                  ref={divRefMobile}
+                >
+                  {dataSource.length > 0 && (
+                    <MessageList
+                      className="message-list"
+                      lockable={false}
+                      dataSource={dataSource}
+                      messageBoxStyles={{
+                        color: "#000",
+                        fontSize: "24px",
+                      }}
+                      onClick={(e) => {
+                        if (e.type === "file") {
+                          window.open(e.data.uri, "_blank");
+                        }
+                      }}
+                      onOpen={(e) => {
+                        setUrlToLargeImageFile(e.data.uri || "");
+                        setOpenLightBox(true);
+                      }}
+                      onRemoveMessageClick={(e) => console.log(e)}
+                      onForwardClick={(e) => console.log(e)}
+                      referance={messageListRef}
+                    />
+                  )}
+                  <Modal
+                    open={uploadProgress !== null}
+                    center
+                    classNames={{}}
+                    showCloseIcon={false}
+                    onClose={() => setUploadProgress(null)}
+                  >
+                    <div className="p-5 px-10 text-center rounded-lg w-60">
+                      <Circle
+                        percent={parseInt(uploadProgress?.toFixed())}
+                        strokeWidth={4}
+                        strokeColor="#62ecc0"
+                        trailColor="white"
+                        strokeLinecap="square"
+                        steps={100}
+                        trailWidth={4}
+                        transition="ease"
+                      />
+                      <p className="pt-4">
+                        Uploading {uploadProgress?.toFixed()}%
+                      </p>
+                    </div>
+                  </Modal>
                 </div>
 
                 <div className="p-2 flex justify-between w-full bg-slate-100">
@@ -536,7 +625,7 @@ function Index() {
                         type="file"
                         ref={fileInputRef}
                         style={{ display: "none" }}
-                        onChange={handleFileChange}
+                        onChange={(e) => handleFileChange(e)}
                       />
                     </div>
 
@@ -544,10 +633,12 @@ function Index() {
                       className="rce-input rce-input-textarea"
                       placeholder="Type here..."
                       style={{ height: "41px" }}
-                      value={currentText}
                       ref={inputRef}
+                      // autoFocus={true}
+                      value={currentText}
                       onChange={(e) => setCurrentText(e.target.value)}
-                    ></textarea>
+                      // defaultValue={currentText}
+                    />
 
                     {/* right buttons */}
                     <div className="rce-input-buttons flex items-center">
@@ -563,7 +654,9 @@ function Index() {
                           color: "white",
                           borderColor: "rgb(57, 121, 170)",
                         }}
-                        onClick={() => sendMessage(currentText)}
+                        onClick={() => {
+                          sendMessage(currentText);
+                        }}
                       >
                         <span className="rce-button-icon--container">
                           {/* <span>Send</span> */}
@@ -598,7 +691,6 @@ function Index() {
               alt=""
               onClose={() => {
                 setUrlToLargeImageFile("");
-                setUrlToHugeImageFile("");
                 setOpenLightBox(false);
               }}
             />
@@ -608,6 +700,7 @@ function Index() {
             open={openEmojiPicker}
             onEmojiClick={(e) => {
               setCurrentText((prev) => prev + e.emoji);
+              inputRef.current.value += e.emoji;
             }}
             style={{ position: "absolute", bottom: "100px", right: "25px" }}
           />

@@ -29,7 +29,7 @@ const Ui = () => {
           <hr />
           <Outlet />
           <ToastContainer />
-          <TanStackRouterDevtools />
+          {/* <TanStackRouterDevtools /> */}
         </>
       ) : (
         <div className="flex h-screen justify-center items-center">

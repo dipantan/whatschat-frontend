@@ -1,3 +1,64 @@
 .rce-mbox-video {
   width: 300px !important;
 }
+
+.rce-mbox-photo {
+  width: 300px !important;
+}
+
+.react-responsive-modal-modal {
+  border-radius: 10px !important;
+}
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  max-width: 600px;
+  margin: auto;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.input-container {
+  display: flex;
+  padding: 10px;
+  background-color: #fff;
+  border-top: 1px solid #ddd;
+}
+
+.input-container input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  margin-right: 10px;
+}
+
+.input-container button {
+  padding: 10px 20px;
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.input-container button:hover {
+  background-color: #0056b3;
+}
+
+.rce-mbox-right {
+  background-color: #62ecc0;
+}
+
+.rce-mbox-right-notch {
+  fill: #62ecc0;
+}

@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { AiOutlineClose, AiOutlineMenu } from "react-icons/ai";
 import { FaUserLarge } from "react-icons/fa6";
 import { IoMdClose } from "react-icons/io";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
@@ -13,6 +12,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   signInWithEmailAndPassword,
+  // signInWithEmailAndPassword,
 } from "firebase/auth";
 
 import {
@@ -38,7 +38,7 @@ import { createCollection } from "../services/firestore.ts";
 
 const Navbar = () => {
   // State to manage the navbar's visibility
-  const [nav, setNav] = useState(false);
+  const [nav] = useState(false);
   const [open, setOpen] = useState(false);
 
   const [email, setEmail] = useState("");
@@ -53,9 +53,6 @@ const Navbar = () => {
   const [name, setName] = useState("");
 
   // Toggle function to handle the navbar's display
-  const handleNav = () => {
-    setNav(!nav);
-  };
 
   // Array containing navigation items
   const navItems = [
@@ -84,15 +81,15 @@ const Navbar = () => {
         password
       );
 
-      // if (user) {
-      //   const { email, uid } = user;
-      //   await createCollection("users", { email }, uid);
-      // }
+      if (user) {
+        const { email, uid } = user;
+        await createCollection("users", { email }, uid);
+      }
 
       setOpen(false);
       setEmail("");
       setPassword("");
-    } catch (err) {
+    } catch (err: unknown) {
       switch (err.code) {
         case "auth/email-already-in-use":
           toast.error("Email already in use");
