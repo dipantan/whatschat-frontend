@@ -148,7 +148,7 @@ const Navbar = () => {
   return (
     <div className="flex items-center mx-auto px-4 text-black w-full">
       {/* Logo */}
-      <h1 className="w-full text-3xl font-bold text-[#00df9a]">WhatsChat</h1>
+      <h1 className="w-full text-3xl font-bold text-[#00df9a]">WhatsChatU</h1>
 
       {/* Desktop Navigation */}
       <ul
@@ -345,7 +345,7 @@ const Navbar = () => {
       >
         {/* Mobile Logo */}
         <h1 className="w-full text-3xl font-bold text-[#00df9a] m-4">
-          Whatschat
+          WhatsChatU
         </h1>
 
         {/* Mobile Navigation Items */}
